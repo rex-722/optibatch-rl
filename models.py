@@ -1,25 +1,14 @@
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List
+
+class Assignment(BaseModel):
+    rider_id: int
+    order_id: int
+    action: str
 
 class OptiBatchAction(BaseModel):
-    action_type: int
+    assignments: List[Assignment] = []
+    thought_process: str = "Waiting for data..."
 
 class ResetRequest(BaseModel):
-    task_id: str = "medium"
-
-class OptiBatchState(BaseModel):
-    time: int
-    pending_orders_count: int
-    available_riders: int
-    oldest_order_time: int
-    sla_limit: int
-    max_capacity: int
-    live_phase: str = "NORMAL"
-    just_delivered: int = 0
-    just_dispatched: bool = False
-
-class StepResponse(BaseModel):
-    state: OptiBatchState
-    reward: float
-    done: bool
-    info: Dict[str, Any]
+    mode: str = "normal"
