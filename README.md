@@ -1,6 +1,16 @@
 # 🚀 OptiBatch-RL: Real-World Last-Mile Dispatch Environment
 
 An OpenEnv-compliant reinforcement learning environment that simulates the intense trade-offs of quick-commerce logistics. It forces AI agents to balance **Fuel Efficiency (Batching)** against **Customer Satisfaction (SLA Breaches)**.
+<img width="788" height="706" alt="Screenshot 2026-03-30 232335" src="https://github.com/user-attachments/assets/6eef419a-a3ae-4334-ba95-49734127892f" />
+
+
+https://huggingface.co/spaces/rex-722ra/optibatch-rl
+
+
+HF_TOKEN="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"
+
+
+<img width="1874" height="818" alt="image" src="https://github.com/user-attachments/assets/bc111ac4-c6ff-42a4-9b99-26bc8c9eb6aa" />
 
 ## 🎯 Motivation
 Static, rule-based algorithms completely choke during peak hours (like Diwali or heavy rain). OptiBatch-RL acts as a smart hub manager, calculating real-time mathematical trade-offs to decide whether to wait for more orders or dispatch immediately.
