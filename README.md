@@ -7,7 +7,7 @@ An OpenEnv-compliant reinforcement learning environment that simulates the inten
 https://huggingface.co/spaces/rex-722ra/optibatch-rl
 
 
-HF_TOKEN="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"
+HF_TOKEN="your_huggingface_token_here"
 
 
 <img width="1874" height="818" alt="image" src="https://github.com/user-attachments/assets/bc111ac4-c6ff-42a4-9b99-26bc8c9eb6aa" />
