@@ -1,0 +1,12 @@
+version: "1.0.0"
+environment_id: "optibatch-swarm"
+entrypoint: "inference.py"
+observation_space:
+  type: "dict"
+action_space:
+  type: "list"
+  description: "List of rider assignments"
+metadata:
+  render_mode: "live_dashboard"
+  max_riders: 150
+  max_hubs: 15
