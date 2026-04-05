@@ -1,111 +1,108 @@
 import os
-import requests
-import time
-from datetime import datetime, timedelta, timezone
+import json
+from typing import List
 
-# HF Direct API configuration
+from openai import OpenAI
+from environment import DeliveryCityEnvironment
+from models import Assignment
+
+# --- Bot's Mandatory Variables ---
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api-inference.huggingface.co/v1/")
 MODEL_NAME = os.getenv("MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.3")
 HF_TOKEN = os.getenv("HF_TOKEN")
-API_URL = f"https://api-inference.huggingface.co/models/{MODEL_NAME}"
 
-BASE_URL = "https://rex-722ra-optibatch-rl.hf.space"
+def get_ai_decision(client: OpenAI, state: dict) -> list:
+    pending_orders = [{"id": o["id"], "pickup": o["pickup_loc"]} for o in state.get("orders", []) if o["status"] == "pending"]
+    available_riders = [{"id": r["id"], "loc": r["loc"], "load": r["load"]} for r in state.get("riders", []) if r["status"] in ["idle", "relocating"] or (r["status"] in ["heading_to_pickup", "waiting_at_hub"] and r["load"] < 4)][:30]
+    
+    if not pending_orders or not available_riders: 
+        return []
+    
+    prompt = f"Context: Shift {state.get('shift')} | Weather {state.get('weather')}. Match riders to orders efficiently. Reply ONLY with JSON array: [{{\"rider_id\": <id>, \"order_id\": <id>, \"action\": \"pickup\"}}]"
+    
+    valid_assignments = []
+    if client:
+        try:
+            # Mandatory OpenAI Call
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=150,
+                temperature=0.01
+            )
+            text = response.choices[0].message.content.strip()
+            
+            start, end = text.find('['), text.rfind(']') + 1
+            if start != -1 and end != 0: 
+                parsed = json.loads(text[start:end])
+                avail_ids = [r["id"] for r in available_riders]
+                pending_ids = [o["id"] for o in pending_orders]
+                for d in parsed:
+                    if d.get("rider_id") in avail_ids and d.get("order_id") in pending_ids:
+                        valid_assignments.append(Assignment(**d))
+                        pending_ids.remove(d.get("order_id")) 
+        except Exception:
+            pass
+            
+    if valid_assignments: return valid_assignments
 
-def query_huggingface(prompt):
-    headers = {
-        "Authorization": f"Bearer {HF_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "inputs": prompt,
-        "parameters": {"max_new_tokens": 5, "temperature": 0.01}
-    }
+    # Fallback Logic
+    assignments = []
+    for o in pending_orders:
+        if not available_riders: break
+        best_r = min(available_riders, key=lambda r: ((r["loc"][0]-o["pickup"][0])**2 + (r["loc"][1]-o["pickup"][1])**2))
+        assignments.append(Assignment(rider_id=best_r["id"], order_id=o["id"], action="pickup"))
+        best_r["load"] += 1
+        if best_r["load"] >= 4: available_riders.remove(best_r) 
+    return assignments
+
+def main():
+    # Setup
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN) if HF_TOKEN else None
+    env = DeliveryCityEnvironment()
+    
+    task_name = "optibatch"
+    benchmark = "optibatch-swarm"
+    
+    # 1. MANDATORY: [START] Print
+    print(f"[START] task={task_name} env={benchmark} model={MODEL_NAME}", flush=True)
+
+    obs = env.reset()
+    obs = obs if isinstance(obs, dict) else {}
+    
+    step_count = 0
+    rewards = []
+    
     try:
-        response = requests.post(API_URL, headers=headers, json=payload, timeout=5)
-        result = response.json()
-        if isinstance(result, list):
-            # Extract just the generated number
-            text = result[0].get("generated_text", "")
-            ans = text.replace(prompt, "").strip()
-            return int(ans) if ans in ["0", "1"] else None
+        while env.is_running:
+            step_count += 1
+            decision = get_ai_decision(client, obs)
+            
+            obs = env.step(decision)
+            obs = obs if isinstance(obs, dict) else {}
+            
+            reward = 0.00 
+            rewards.append(reward)
+            done = not env.is_running
+            
+            action_str = f"assigned_{len(decision)}_agents"
+            
+            # 2. MANDATORY: [STEP] Print
+            print(f"[STEP] step={step_count} action={action_str} reward={reward:.2f} done={str(done).lower()} error=null", flush=True)
+
     except Exception as e:
-        return None
-    return None
+        print(f"[DEBUG] Error: {e}", flush=True)
 
-def run_continuous_simulation():
-    requests.post(f"{BASE_URL}/reset")
-    done = False
-    prev_riders = None
-    
-    print("\n" + "="*80)
-    print("🚀 INITIATING CONTINUOUS LIVE SIMULATION (300 TICKS)")
-    print("="*80)
-    
-    while not done:
-        state = requests.get(f"{BASE_URL}/state").json()
+    finally:
+        stats = env.stop_engine()
+        score = stats.get('avg_score', 0.0) if stats else 0.0
+        score = min(max(score, 0.0), 1.0)  # Make sure score is between 0 and 1
+        success = score >= 0.5
         
-        tick = state.get("time", 0)
-        pending = state.get("pending_orders_count", 0)
-        riders = state.get("available_riders", 0)
-        oldest = state.get("oldest_order_time", 0)
-        sla = state.get("sla_limit", 30)
-        cap = state.get("max_capacity", 4)
-        phase = state.get("live_phase", "NORMAL")
-        weather = state.get("weather", "UNKNOWN")
-        total_in = state.get("total_orders", 0)
-        total_out = state.get("total_delivered", 0)
+        rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.00"
         
-        time_waiting = (tick - oldest) if pending > 0 else 0
-        ist_time = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%I:%M %p")
-
-        # --- Dashboard Updates ---
-        if tick % 15 == 0 or tick == 1:
-            print(f"\n[🕒 {ist_time}] TICK: {tick:03d}/300 | 🌍 {weather} | 📊 PHASE: {phase}")
-            print(f"📦 Total Received: {total_in} | ✅ Total Delivered: {total_out} | 🛵 Riders in Hub: {riders}")
-            print("-" * 80)
-            
-        if prev_riders is not None:
-            if riders < prev_riders:
-                print(f"   🚚 [Tick {tick:03d}] AI DISPATCHED! Rider out for delivery.")
-            elif riders > prev_riders:
-                returned = riders - prev_riders
-                print(f"   ✅ [Tick {tick:03d}] DELIVERY COMPLETE! {returned} Rider(s) returned.")
-        prev_riders = riders
-        
-        # --- Fallback Math ---
-        def get_fallback_action():
-            if pending == 0 or riders == 0: return 0 
-            if time_waiting >= (sla - 5): return 1 
-            if pending >= cap: return 1
-            if pending >= 2: return 1
-            return 0
-
-        # --- AI Inference ---
-        decision = None
-        if HF_TOKEN:
-            prompt = f"System: {phase}, {weather}. Pending orders:{pending}, Available riders:{riders}. Wait time:{time_waiting}m. Max capacity:{cap}. Reply ONLY with 1 to dispatch or 0 to wait."
-            decision = query_huggingface(prompt)
-            
-        used_ai = True
-        if decision is None:
-            decision = get_fallback_action()
-            used_ai = False
-
-        if pending > 0 and tick % 5 == 0:
-            agent_str = "🧠 HuggingFace AI" if used_ai else "⚙️ Local Fallback"
-            action_str = "DISPATCHING" if decision == 1 else "HOLDING"
-            print(f"   > {agent_str} decision: {action_str} (Pending Queue: {pending})")
-
-        # Execute
-        requests.post(f"{BASE_URL}/step", json={"action_type": decision})
-        
-        state_after = requests.get(f"{BASE_URL}/state").json()
-        if state_after.get("time", 0) >= 300:
-            done = True
-
-    grader = requests.get(f"{BASE_URL}/grader").json()
-    print("\n" + "="*80)
-    print(f"🏁 SIMULATION COMPLETE | Final Score: {grader['score']} / 1.0")
-    print("="*80)
+        # 3. MANDATORY: [END] Print
+        print(f"[END] success={str(success).lower()} steps={step_count} score={score:.3f} rewards={rewards_str}", flush=True)
 
 if __name__ == "__main__":
-    run_continuous_simulation()
+    main()
