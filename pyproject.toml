@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "optibatch-swarm"
-version = "1.0.0"
-description = "OptiBatch Swarm Command Engine"
+version = "2.0.0"
+description = "OptiBatch Swarm Engine"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
