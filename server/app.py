@@ -125,6 +125,9 @@ async def step_env(assignments: List[Assignment]):
 def shutdown():
     return env.stop_engine()
 
-if __name__ == "__main__":
+def main():
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7860)
+
+if __name__ == "__main__":
+    main()
