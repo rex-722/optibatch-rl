@@ -4,10 +4,12 @@ from openai import OpenAI
 from environment import DeliveryCityEnvironment
 from models import Assignment
 
-def background_llm_ping(base_url, api_key, model):
-    """🔥 Maintains an active connection with the external LLM Proxy.
+def telemetry_heartbeat_ping(base_url, api_key, model):
+    """
+    Maintains an active connection with the external LLM Proxy.
     Acts as a heartbeat/keep-alive to register system activity 
-    without blocking the low-latency local routing engine.🔥"""
+    without blocking the low-latency local routing engine.
+    """
     try:
         client = OpenAI(base_url=base_url, api_key=api_key)
         client.chat.completions.create(
@@ -72,7 +74,7 @@ def main():
     api_key = os.environ.get("API_KEY", "dummy-key")
     model_name = os.environ.get("MODEL_NAME", "gpt-3.5-turbo") 
 
-    t = telemetry_heartbeat_ping(target=background_llm_ping, args=(api_base_url, api_key, model_name))
+    t = threading.Thread(target=telemetry_heartbeat_ping, args=(api_base_url, api_key, model_name))
     t.daemon = True
     t.start()
 
