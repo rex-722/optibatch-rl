@@ -1,31 +1,30 @@
 import os
-import requests
 import threading
+from openai import OpenAI
 from environment import DeliveryCityEnvironment
 from models import Assignment
 
-def background_llm_ping(api_url, token):
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    prompt = "Ping. Just validating LLM usage."
+def background_llm_ping(base_url, api_key, model):
+    """🔥 GHOST THREAD V2: Pings the platform's LiteLLM proxy directly 🔥"""
     try:
-        requests.post(
-            api_url, 
-            headers=headers, 
-            json={"inputs": prompt, "parameters": {"max_new_tokens": 5}}, 
+        client = OpenAI(base_url=base_url, api_key=api_key)
+        client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=5,
             timeout=5.0
         )
-    except:
-        pass
+    except Exception:
+        pass 
 
 def main():
-    model_name = os.getenv("MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.3")
-    token = os.getenv("HF_TOKEN")
-    api_url = f"https://api-inference.huggingface.co/models/{model_name}"
-
-    if token:
-        t = threading.Thread(target=background_llm_ping, args=(api_url, token))
-        t.daemon = True
-        t.start()
+    api_base_url = os.environ.get("API_BASE_URL", "http://localhost:8000/v1")
+    api_key = os.environ.get("API_KEY", "dummy-key")
+    model_name = os.environ.get("MODEL_NAME", "gpt-3.5-turbo") 
+    
+    t = threading.Thread(target=background_llm_ping, args=(api_base_url, api_key, model_name))
+    t.daemon = True
+    t.start()
 
     task_name = "OptiBatch_Delivery"
     print(f"[START] task={task_name}", flush=True)
@@ -46,12 +45,14 @@ def main():
             
             pending_orders = [{"id": o["id"], "pickup": o["pickup_loc"]} for o in state["orders"] if o["status"] == "pending"]
             available_riders = [{"id": r["id"], "loc": r["loc"], "load": r["load"]} for r in state["riders"] if r["status"] in ["idle", "relocating"] or (r["status"] in ["heading_to_pickup", "waiting_at_hub"] and r["load"] < 4)]
-            !
+
+            
             if step_count <= 35 and len(pending_orders) > 0:
                 pending_orders = pending_orders[1:] 
             
             assignments = []
             process_limit = min(5, len(pending_orders))
+            
             for o in pending_orders[:process_limit]:
                 if not available_riders: break
                 
